@@ -483,7 +483,7 @@ void ReadADCData(){
     WREG(Burnout_Off, WREG_TX_LENGTH);//Stop reading voltage and temperature monitors (same as burnout off)
 
     __delay_cycles(CONVERSION_DELAY);
-    P1OUT &= ~(BIT0);
+    //P1OUT &= ~(BIT0);
 }
 
 uint8_t BurnoutCheck(uint8_t *data){
@@ -496,7 +496,7 @@ uint8_t BurnoutCheck(uint8_t *data){
 }
 
 void ADCReset(){
-    P1OUT &= ~BIT0;                            //LED off
+    //P1OUT &= ~BIT0;                            //LED off
     P2OUT &= ~BIT3;                           // With SPI signals initialized,
     __delay_cycles(RESET_DELAY); //Half this?      //
     P2OUT |= BIT3;                            // reset slave
@@ -510,7 +510,7 @@ void ADCReset(){
     //RREG(RReg_All_Tx, RREG_TX_LENGTH, RREG_RX_LENGTH_ALL);
     //CopyArray(ReceiveBuffer, RReg_All_Rx, RREG_RX_LENGTH_ALL);
 
-    P1OUT |= BIT0;                            //LED on
+    //P1OUT |= BIT0;                            //LED on
 }
 
 void SPI_Debug(){
@@ -579,19 +579,22 @@ void I2C_Slave_ProcessCMD(uint8_t cmd)
     i2cTransmitIndex = 0;
     i2cRXByteCtr = 0;
     i2cTXByteCtr = 0;
+    Status_bitfield[0] = 0;
+
+    //DEBUGWhoops, should copy to status bitfield, not directly to i2c TransmitBuffer. Also does the status bitfield actually get reset every cycle?
 
     if (cmd & BIT0){                            //Reset
         ADCReset();
-        i2cTransmitBuffer[36] |= BIT5;  //Set status bit
+        Status_bitfield[0] |= BIT5;  //Set status bit
         //P1OUT &= ~(BIT0);
     }
     if (cmd & BIT1){                            //Self Offset Calibration
         SelfCalibration();
-        i2cTransmitBuffer[36] |= BIT6;  //Set status bit
+        Status_bitfield[0] |= BIT6;  //Set status bit
     }
     if (cmd & BIT2){                            //Burnout Detect
         BurnoutDetect();
-        i2cTransmitBuffer[36] |= BIT7;  //Set status bit
+        Status_bitfield[0] |= BIT7;  //Set status bit
     }
 
     SlaveMode = I2C_TX_DATA_MODE;
@@ -661,7 +664,7 @@ void initGPIO()
 {
   //LEDs
   P1OUT = 0x00;                             // P1 setup for debug LED
-  P1DIR |= BIT0;// + BIT6;
+  //P1DIR |= BIT0;// + BIT6;
 
   //ADC Reset, DRDY and START/SYNC (Active Low)
   P2DIR |= BIT3 + BIT4;                       //P2.3, P2.4 Output
@@ -719,8 +722,19 @@ int main(void)
 
   WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
 
+
+
+
+  for(;;){
   //Power-on tasks for MSP430 (init clock, GPIO, SPI and I2C; perform reset,
   //Self offset calibration, and burnout detect.
+
+  if(started == 1){
+      initI2C();                               //Initialize I2C
+      __delay_cycles(30);
+
+  }
+
   if(started == 0){
       initClockTo8MHz();                       //Initialize Sub-Main Clock (SMCLK) to 8MHz
       initGPIO();                              //Initialize GPIO
@@ -734,13 +748,19 @@ int main(void)
 
       //SPI_Debug();
       //Publish_Data();
-      P1OUT &= ~(BIT0);
+      //P1OUT &= ~(BIT0);
   }
+
 
   //Wait in low-power mode until I2C rx interrupt
   __bis_SR_register(LPM0_bits + GIE);       // CPU off, enable interrupts and wait for commands from master
+}
+  /****************TRAP IN LOOP, AND STOP SPI INTERRUPT FROM EXITING LPMO AFTER PUBLISHING DATA BECAUSE IT STOPS I2C FROM EXECUTING********
+   **DISABLE I2C INTERRUPTS DURING SPI AND SPI INTERRUPTS DURING I2C
+   **ADD DELAY IF STUCK IN I2C TX MODE FOR TOO LONG
+   */
 
-  return 0;
+  //return 0;
 }
 
 //******************************************************************************
@@ -883,6 +903,7 @@ void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIAB0TX_ISR (void)
                   SlaveMode = I2C_RX_REG_ADDRESS_MODE;
                   IE2 &= ~(UCB0TXIE);
                   IE2 |= UCB0RXIE;                          // Enable RX interrupt
+                  __bic_SR_register_on_exit(CPUOFF);      // DEBUG Exit LPM0
               }
               break;
           default:
