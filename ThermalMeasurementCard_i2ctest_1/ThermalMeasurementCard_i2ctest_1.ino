@@ -14,6 +14,7 @@ byte cmd_read = 0;
 
 char c = 0;
 
+unsigned long cntr = 0; //Counter to switch between commands for testing
 unsigned long timeref = millis(); //get reference time at start
 
 void setup() {
@@ -27,34 +28,42 @@ void setup() {
 
 void loop() {    
   unsigned long timenow = millis(); //Get current time
-  
-  if ((timenow >= timeref) && (timenow < timeref + 15000 )){
+  if (timenow > timeref + 2000){
+    switch(cntr){
+
+ case 0 :
     Wire.beginTransmission(SLAVE_ADDR); //write to device 9
     Wire.write(cmd_read);//0x01
     Wire.endTransmission();
     Serial.println("++read (0x00)");
-    delay(2500);
+    delay(3000);
     ReadSlave();
-    delay(2500);
-
+    //delay(2000);
+    cntr = 1;
+    break;
+  case 1 :
     Wire.beginTransmission(SLAVE_ADDR); //write to device 9
     Wire.write(cmd_reset); //0x01
     Wire.endTransmission();
-    timeref = millis();
+    //timeref = millis();
     Serial.println("++reset (0x01)");
     delay(3000);
     ReadSlave();
-    delay(3000);
-}
-    if ((timenow >= timeref+15000) && (timenow < timeref + 20000 )){
+    //delay(2000);
+    cntr = 2;
+    break;
+  case 2 :    
     Wire.beginTransmission(SLAVE_ADDR); //write to device 9
     Wire.write(cmd_selfcalibration);//0x02
     Wire.endTransmission();
     Serial.println("++self_calibration (0x02)");
     delay(3000);
     ReadSlave();
-}
-  if ((timenow >= timeref + 20000)){
+    //delay(2000);
+    cntr = 3;
+    break;
+
+  case 3 :
     Wire.beginTransmission(SLAVE_ADDR); //write to device 9
     Wire.write(cmd_burnoutdetect); //0x08
     Wire.endTransmission();
@@ -62,8 +71,13 @@ void loop() {
     Serial.println("++burnout (0x08)");
     delay(3000);
     ReadSlave();
-}
+    //delay(2000);
     timeref = millis();
+    cntr = 0;
+    break;
+    }
+    timeref = millis();
+  }
 }
 
 void ReadSlave() {
@@ -72,11 +86,17 @@ void ReadSlave() {
   while (Wire.available()){
     c = Wire.read();
     Serial.print(c, HEX);
+    Serial.print(" ");
   }
-    Wire.requestFrom(SLAVE_ADDR, 8);
+  //Unfortunately with this workaround, the 33rd byte in the MSP430's output buffer gets lost
+  // and the 33rd byte printed via serial is actually the 34th byte, so this code only requests 39
+  // bytes instead of the actual 40. In addition, the last two status bytes get corrupted as 1F FF
+  // This is good enough for at-home testing
+    Wire.requestFrom(SLAVE_ADDR, 7);
   while (Wire.available()){
     c = Wire.read();
     Serial.print(c, HEX);
+    Serial.print(" ");
   }
   Serial.println("");
 }
