@@ -14,7 +14,12 @@
 // I2CAddr_1   -->|P2.1         P1.1|<-   Data In (UCA0SOMI)
 //                |                 |
 // I2CAddr_2   -->|P2.2         P1.4|->   Serial Clock Out (UCA0CLK)
-//                |                 |
+//                |   P1.6   P1.0   |
+//                 -----------------
+//                      |      |
+//                      |      ---->SYNC
+//                      V
+//                      LED Heartbeat
 //********************************************************************************************
 
 #include <msp430.h>
@@ -664,7 +669,9 @@ void initGPIO()
 {
   //LEDs
   P1OUT = 0x00;                             // P1 setup for debug LED
-  //P1DIR |= BIT0;// + BIT6;
+  //P1DIR |= BIT0;                            // LED Heartbeat output
+  //P1DIR &= ~BIT6;                           // sync pin for input
+
 
   //ADC Reset, DRDY and START/SYNC (Active Low)
   P2DIR |= BIT3 + BIT4;                       //P2.3, P2.4 Output
@@ -672,6 +679,11 @@ void initGPIO()
   P2OUT &= ~BIT4;                             //P2.4 Low  --> START/SYNC
   P2DIR &= ~(I2CA_0 + I2CA_1 + I2CA_2 + BIT5);//P2.0, 2.1, 2.2, 2.5 Input --> I2C Pins, !DRDY
 
+
+  //Timer A Pins and setup
+  /*CCTL0 = CCIE;
+  CCR0 = 4000000;
+  TACTL = TASSEL_2 + MC_2;*/
 
   //SPI Pins
   P1SEL = BIT1 + BIT2 + BIT4;               //Assign SPI pins to USCI_A0
@@ -913,3 +925,19 @@ void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIAB0TX_ISR (void)
 
   }
 }
+
+/*
+// Timer A0 ISR
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt void Timer_A (void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A (void)
+#else
+#error Compiler not supported!
+#endif
+{
+  P1OUT ^= 0x01;                            // Toggle P1.0
+  CCR0 += 4000000;                            // Add Offset to CCR0
+}
+*/
